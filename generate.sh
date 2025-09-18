@@ -33,33 +33,18 @@ for XMLFILE in ../tmp/trains/*.xml; do
 	fi
 done
 
-# Create ../tmp/stations directory if it doesn't exist
-mkdir -p ../tmp/stations
 
-# Iterate through git log for stations.xml
-git log --pretty=format:"%H %at" -- stations.xml | awk 1 | while read COMMIT TS; do
-	OUTFILE="../tmp/stations/${TS}.xml"
-	# Only extract if file doesn't already exist
-	if [ ! -f "$OUTFILE" ]; then
-		echo "Extracting $OUTFILE from commit $COMMIT"
-		git show ${COMMIT}:stations.xml > "$OUTFILE"
-	else
-		echo "Skipping $OUTFILE (already exists)"
-	fi
-done
+## stations are more static
 
+XMLFILE="stations.xml"
+CSVFILE="../tmp/stations.csv"
+if [ ! -f "$CSVFILE" ]; then
+	echo "Converting $XMLFILE to $CSVFILE"
+	xmlstarlet sel -T -t -m '/*[local-name()="ArrayOfObjStation"]/*[local-name()="objStation"]' \
+		-v 'concat(./*[local-name()="StationCode"],",",./*[local-name()="StationDesc"],",",./*[local-name()="StationAlias"],",",./*[local-name()="StationLatitude"],",",./*[local-name()="StationLongitude"],",",./*[local-name()="StationId"])' \
+		-n "$XMLFILE" \
+		| awk 'BEGIN {print "StationCode,StationDesc,StationAlias,StationLatitude,StationLongitude,StationId"} {print}' > "$CSVFILE"
+else
+	echo "Skipping $CSVFILE (already exists)"
+fi
 
-# Convert ../tmp/stations/*.xml to CSV (after extraction loop)
-for XMLFILE in ../tmp/stations/*.xml; do
-    TS=$(basename "$XMLFILE" .xml)
-    CSVFILE="../tmp/stations/${TS}.csv"
-    if [ ! -f "$CSVFILE" ]; then
-        echo "Converting $XMLFILE to $CSVFILE"
-        xmlstarlet sel -T -t -m '/*[local-name()="ArrayOfObjStation"]/*[local-name()="objStation"]' \
-            -v 'concat('"$TS"',",",./*[local-name()="StationCode"],",",./*[local-name()="StationDesc"],",",./*[local-name()="StationAlias"],",",./*[local-name()="StationLatitude"],",",./*[local-name()="StationLongitude"],",",./*[local-name()="StationId"])' \
-            -n "$XMLFILE" \
-            | awk 'BEGIN {print "Time,StationCode,StationDesc,StationAlias,StationLatitude,StationLongitude,StationId"} {print}' > "$CSVFILE"
-    else
-        echo "Skipping $CSVFILE (already exists)"
-    fi
-done

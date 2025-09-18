@@ -8,7 +8,10 @@ Irish train location viewer
 # update data
 git submodule update --remote data
 
-# generate db
+# extract content from git
 ./generate.sh
+
+# generate a duckdb file
+duckdb data.ddb -c ".read generate.sql"
 ```
 
