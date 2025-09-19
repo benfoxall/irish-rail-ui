@@ -6,8 +6,6 @@ import eh_worker from "@duckdb/duckdb-wasm/dist/duckdb-browser-eh.worker.js?url"
 
 import dbUrl from "./assets/data.ddb?url";
 
-console.log(dbUrl);
-
 const MANUAL_BUNDLES: duckdb.DuckDBBundles = {
   mvp: {
     mainModule: duckdb_wasm,
@@ -23,6 +21,8 @@ const bundle = await duckdb.selectBundle(MANUAL_BUNDLES);
 // Instantiate the asynchronus version of DuckDB-wasm
 const worker = new Worker(bundle.mainWorker!);
 const logger = new duckdb.ConsoleLogger();
+
+// open stored data
 export const db = new duckdb.AsyncDuckDB(logger, worker);
 
 await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
@@ -38,20 +38,22 @@ await db.open({
   path: "remote.duckdb",
 });
 
-console.log("open?");
+// console.log("open?");
 
-// Create a new connection
+// // Create a new connection
 const conn = await db.connect();
 
-const result = await conn.query(`
-    SELECT count(*) FROM stations
-`);
+await conn.query("INSTALL spatial; LOAD spatial;");
 
-console.log(
-  "result",
-  result.toArray().map((row) => row.toJSON())
-);
+// const result = await conn.query(`select ST_AsGeoJSON(point) as geo, "desc", code, from stations`);
 
-window.sss = result;
+// console.log(
+//   "result",
+//   result.toArray().map((row) => row.toJSON())
+// );
+
+// window.sss = result;
 
 await conn.close();
+
+export default db;

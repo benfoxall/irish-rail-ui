@@ -1,39 +1,61 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import viteLogo from "/vite.svg";
+import { Suspense, use, useEffect, useState } from "react";
 import "./App.css";
 
-import { db } from "./db";
-
-console.log(db);
+const dbImport = import("./db").then((d) => d.default);
 
 function App() {
-  const [count, setCount] = useState(0);
-
   return (
     <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
+      <h3>Trains!</h3>
+      <Suspense fallback="Waiting for db">
+        <Foobar />
+      </Suspense>
     </>
   );
 }
+
+import * as arrow from "apache-arrow";
+
+const Foobar = () => {
+  const db = use(dbImport);
+
+  const [items, setItems] = useState<
+    { geo: string; desc: string; code: string }[]
+  >([]);
+
+  useEffect(() => {
+    async function run() {
+      const conn = await db.connect();
+
+      const result = await conn.query<{
+        geo: arrow.Utf8;
+        desc: arrow.Utf8;
+        code: arrow.Utf8;
+      }>(`select ST_AsGeoJSON(point) as geo, "desc", code, from stations`);
+
+      setItems([]);
+      for (const batch of result.batches) {
+        for (const row of batch) {
+          setItems((p) => [row.toJSON(), ...p]);
+        }
+      }
+
+      await conn.close();
+    }
+
+    run();
+  }, [db]);
+
+  return (
+    <div>
+      stations:
+      {items.map((item) => (
+        <div key={item.code + item.desc}>
+          {item.code} {item.desc}
+        </div>
+      ))}
+    </div>
+  );
+};
 
 export default App;
