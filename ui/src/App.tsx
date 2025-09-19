@@ -1,4 +1,8 @@
-import { Suspense, use, useEffect, useState } from "react";
+import { Suspense, use, useEffect, useState, type FC } from "react";
+import * as arrow from "apache-arrow";
+import { feature, featureCollection } from "@turf/turf";
+import Map, { Layer, Source } from "react-map-gl/maplibre";
+import "maplibre-gl/dist/maplibre-gl.css";
 
 const dbImport = import("./db").then((d) => d.default);
 
@@ -6,21 +10,38 @@ function App() {
   return (
     <>
       <h3>Trains!</h3>
-      <Suspense fallback="Waiting for db">
-        <Foobar />
-      </Suspense>
+
+      <Map
+        initialViewState={{
+          longitude: -6.2603,
+          latitude: 53.3498,
+          zoom: 10,
+        }}
+        style={{ position: "fixed", left: 0, top: 0, right: 0, bottom: 0 }}
+        mapStyle="https://tiles.openfreemap.org/styles/positron"
+      >
+        <Suspense fallback={null}>
+          <Stations />
+        </Suspense>
+      </Map>
     </>
   );
 }
 
-import * as arrow from "apache-arrow";
-
-const Foobar = () => {
+const Stations: FC = () => {
   const db = use(dbImport);
 
-  const [items, setItems] = useState<
-    { geo: string; desc: string; code: string }[]
-  >([]);
+  const [geo, setGeo] = useState<
+    GeoJSON.FeatureCollection<
+      GeoJSON.Point,
+      {
+        code: string;
+        desc: string;
+      }
+    >
+  >();
+
+  console.log(geo);
 
   useEffect(() => {
     async function run() {
@@ -32,12 +53,33 @@ const Foobar = () => {
         code: arrow.Utf8;
       }>(`select ST_AsGeoJSON(point) as geo, "desc", code, from stations`);
 
-      setItems([]);
+      const features: GeoJSON.Feature<
+        GeoJSON.Point,
+        {
+          code: string;
+          desc: string;
+        }
+      >[] = [];
+
       for (const batch of result.batches) {
         for (const row of batch) {
-          setItems((p) => [row.toJSON(), ...p]);
+          const geometry = JSON.parse(row.geo);
+
+          const f = feature(geometry as GeoJSON.Point, {
+            code: row.code,
+            desc: row.desc,
+          });
+
+          features.push(f);
+
+          // }
+          // setItems((p) => [row.toJSON(), ...p]);
         }
       }
+
+      const collection = featureCollection(features);
+
+      setGeo(collection);
 
       await conn.close();
     }
@@ -45,16 +87,15 @@ const Foobar = () => {
     run();
   }, [db]);
 
-  return (
-    <div>
-      stations:
-      {items.map((item) => (
-        <div key={item.code + item.desc}>
-          {item.code} {item.desc}
-        </div>
-      ))}
-    </div>
-  );
+  if (geo) {
+    return (
+      <Source type="geojson" data={geo}>
+        <Layer type="circle"></Layer>
+      </Source>
+    );
+  }
+
+  return null;
 };
 
 export default App;
