@@ -12,6 +12,7 @@ git submodule update --remote data
 ./generate.sh
 
 # generate a duckdb file
-duckdb data.ddb -c ".read generate.sql"
+rm ui/src/assets/data.ddb
+duckdb ui/src/assets/data.ddb -c ".read generate.sql"
 ```
 

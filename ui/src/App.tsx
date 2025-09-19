@@ -1,5 +1,4 @@
 import { Suspense, use, useEffect, useState } from "react";
-import "./App.css";
 
 const dbImport = import("./db").then((d) => d.default);
 
