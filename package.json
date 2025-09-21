@@ -1,0 +1,15 @@
+{
+  "name": "irish-rail-ui",
+  "version": "1.0.0",
+  "description": "Irish train location viewer",
+  "homepage": "https://github.com/benfoxall/irish-rail-ui#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/benfoxall/irish-rail-ui.git"
+  },
+  "license": "MIT",
+  "author": "Ben Foxall",
+  "type": "module",
+  "scripts": {
+  }
+}
