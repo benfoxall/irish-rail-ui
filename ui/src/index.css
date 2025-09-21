@@ -16,3 +16,18 @@ a {
 a:hover {
   color: #535bf2;
 }
+
+.control-panel {
+  position: absolute;
+  top: 1em;
+  right: 1em;
+  /* right: 0; */
+  background: #fff9;
+  /* border: 1px solid #0003; */
+  box-shadow: #3333 0px 0px 10px;
+  /* margin: 2em; */
+  padding: 0.5em 1em;
+  color: #333;
+  border-radius: 10px;
+  backdrop-filter: blur(5px);
+}
