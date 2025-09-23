@@ -1,4 +1,4 @@
-import { Suspense, use, useEffect, useMemo, useState, type FC } from "react";
+import { Suspense, use, useEffect, useState, type FC } from "react";
 import * as arrow from "apache-arrow";
 import { feature, featureCollection } from "@turf/turf";
 import Map, { Layer, Source } from "react-map-gl/maplibre";
