@@ -94,5 +94,13 @@ describe("parsing public message", () => {
         station: "Park West and Cherry Orchard",
       });
     });
+
+    it("handles salthill", () => {
+      const parsed = parsePublicMessage(
+        "E212\n08:41 - Howth to Bray (8 mins late)\nDeparted Salthill and Monkstown next stop Dun Laoghaire"
+      );
+
+      assert.equal(parsed.station, "Salthill and Monkstown");
+    });
   });
 });

@@ -31,7 +31,7 @@ export function parsePublicMessage(message: string) {
   if (/Departed/.test(statusLine)) {
     type = "departed";
     // Departed <station> next stop ...
-    const match = /Departed ([^ ]+)/.exec(statusLine);
+    const match = /Departed (.+?) next stop/.exec(statusLine);
     if (match) station = match[1];
   } else if (/Arrived/.test(statusLine)) {
     type = "arrived";
