@@ -27,20 +27,23 @@ export function parsePublicMessage(message: string) {
   const statusLine = lines[2] || "";
   let type = "";
   let station = "";
+  let nextStop = "";
 
   if (/Departed/.test(statusLine)) {
     type = "departed";
     // Departed <station> next stop ...
-    const match = /Departed (.+?) next stop/.exec(statusLine);
-    if (match) station = match[1];
+    const match = /Departed (.+?) next stop (.+?)$/.exec(statusLine);
+    if (match) {
+      station = match[1];
+      nextStop = match[2];
+    }
   } else if (/Arrived/.test(statusLine)) {
     type = "arrived";
     // Arrived <station> next stop ...
-    const match = /Arrived ([^ ]+(?: [^ ]+)?)/.exec(statusLine);
+    const match = /Arrived (.+?)(?: next stop (.+?))?$/.exec(statusLine);
     if (match) {
-      // If next stop is present, only take up to 'next stop'
-      const arrMatch = /Arrived (.+?) next stop/.exec(statusLine);
-      station = arrMatch ? arrMatch[1] : match[1];
+      station = match[1];
+      nextStop = match[2] || "";
     }
   } else if (/TERMINATED/.test(statusLine)) {
     type = "terminated";
@@ -60,5 +63,6 @@ export function parsePublicMessage(message: string) {
     route,
     type,
     station,
+    nextStop,
   };
 }

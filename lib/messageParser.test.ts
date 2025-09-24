@@ -103,4 +103,12 @@ describe("parsing public message", () => {
       assert.equal(parsed.station, "Salthill and Monkstown");
     });
   });
+
+  it("captured destination station", () => {
+    const parsed = parsePublicMessage(
+      "E212\n08:41 - Howth to Bray (8 mins late)\nDeparted Salthill and Monkstown next stop Dun Laoghaire"
+    );
+
+    assert.equal(parsed.nextStop, "Dun Laoghaire");
+  });
 });
