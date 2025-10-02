@@ -6,30 +6,28 @@ import { parsePublicMessage } from "./lib/messageParser.ts";
 import { stationParser, trainParser } from "./lib/xml.ts";
 import yoctoSpinner from "yocto-spinner";
 
-const stationsSpinner = yoctoSpinner({ text: "stations" }).start();
+// const stationsSpinner = yoctoSpinner({ text: "stations" }).start();
 
-// format the stations as xml
-const stationXML = await readFile("data/stations.xml");
+// // format the stations as xml
+// const stationXML = await readFile("data/stations.xml");
 
-const stations = stationParser(stationXML.toString());
+// const stations = stationParser(stationXML.toString());
 
-const stationCsv = csv.format({ headers: true });
+// const stationCsv = csv.format({ headers: true });
 
-stationCsv.pipe(createWriteStream("tmp/stations.csv"));
+// stationCsv.pipe(createWriteStream("tmp/stations.csv"));
 
-for (const station of stations) {
-  stationCsv.write(station);
-}
+// for (const station of stations) {
+//   stationCsv.write(station);
+// }
 
-stationCsv.end();
+// stationCsv.end();
 
-stationsSpinner.success();
+// stationsSpinner.success();
 
 /// extract train events by scanning file history
 
 const eventsSpinner = yoctoSpinner({ text: "events" }).start();
-
-console.time("events");
 
 const stream = await createHistoryStream();
 
@@ -37,77 +35,57 @@ const eventsCsv = csv.format({ headers: true });
 
 eventsCsv.pipe(createWriteStream("tmp/events.csv"));
 
-const prev = new Map();
+// const eventsFullCsv = csv.format({ headers: true });
 
-const ignoredStations = [
-  "LJ458",
-  "LJ461",
-  "TS465",
-  "PL101",
-  "PL102",
-  "PL103",
-  "PL104",
-  "LJ896",
-  "LJ895",
-  "GL368",
-  "MW858",
-  "Killucan",
-  "Mosney",
-  "Inchicore Advance Starter",
-  "Cherryville Junction",
-  "Lisduff",
-  "Geashill",
-  "North Strand Junction",
-  "Clonydonnin",
-  "Killonan",
-  "Carrick On Shannon Loop",
-  "Lavistown",
-  "Lavistown North",
-  "Lavistown South",
-];
-const stationMap = {
-  "Killarney Junction": "Killarney",
-  "Athlone Midland Yard": "Athlone",
-  "Limerick Junction Loop": "Limerick Junction",
-};
+// eventsFullCsv.pipe(createWriteStream("tmp/events-full.csv"));
+
+const prev = new Map<string, string>();
+
+console.time("process");
 
 for await (const { timestamp, content, progress } of stream) {
-  const trains = trainParser(content);
+  try {
+    const trains = trainParser(content);
 
-  for (const train of trains) {
-    const { code, date, message } = train;
+    for (const train of trains) {
+      const { code, date, message } = train;
 
-    const next = parsePublicMessage(message);
+      // deduplicate messages
+      if (prev.get(code) === message) continue;
+      prev.set(code, message);
 
-    if (stationMap[next.station]) next.station = stationMap[next.station];
+      const parsed = parsePublicMessage(message);
 
-    if (ignoredStations.includes(next.station)) continue;
+      // if (stationMap[next.station]) next.station = stationMap[next.station];
 
-    const match = stations.find((s) => s.desc === next.station);
-    if (!match) {
-      console.log("no station match for: ", next);
-      console.log("source:", train);
-      console.log("message:", JSON.stringify(train.message));
+      // if (ignoredStations.includes(next.station)) continue;
 
-      process.exit();
-    }
+      // const match = stations.find((s) => s.desc === next.station);
+      // if (!match) {
+      //   console.log("no station match for: ", next);
+      //   console.log("source:", train);
+      //   console.log("message:", JSON.stringify(train.message));
 
-    const last = prev.get(code);
+      //   // process.exit();
+      // }
 
-    if (!eq(last, next)) {
-      // emit next
       eventsCsv.write({
         timestamp,
         date,
-        ...next,
+        lat: parseFloat(train.lat),
+        lon: parseFloat(train.lon),
+        ...parsed,
       });
     }
 
-    prev.set(code, next);
-
     eventsSpinner.text = (progress * 100).toFixed(2) + "%";
+  } catch (e) {
+    console.error("failed to extract", e);
+    // console.log("content: " + content);
   }
 }
+
+console.timeEnd("process");
 
 eventsSpinner.text = "events";
 eventsSpinner.success();
