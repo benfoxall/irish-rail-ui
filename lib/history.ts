@@ -1,19 +1,23 @@
-import child_process from "node:child_process";
+import fs from "node:fs";
+import { log, readBlob, type ReadCommitResult } from "isomorphic-git";
 import { ReadableStream, TransformStream } from "node:stream/web";
-import { promisify } from "node:util";
 
-const exec = promisify(child_process.exec);
+const dir = process.cwd();
+
+const gitProps = {
+  fs,
+  dir,
+  gitdir: `${dir}/.git/modules/data`,
+};
+
+const depth = 100000;
 
 /** stream the versions of the currentTrains.xml file */
 export async function createHistoryStream() {
-  const { stdout: historyTxt } = await exec(
-    'git -C data log --reverse --pretty=format:"%H %at" -- ./currentTrains.xml'
-  );
-
-  const history = historyTxt.split("\n").map((line) => {
-    const [commit, timestamp] = line.split(" ");
-
-    return { timestamp: parseInt(timestamp, 10) * 1000, commit };
+  const history = await log({
+    ...gitProps,
+    filepath: "currentTrains.xml",
+    depth,
   });
 
   const stream = ReadableStream.from(history);
@@ -21,15 +25,18 @@ export async function createHistoryStream() {
   let i = 0;
 
   const transform = new TransformStream<
-    { commit: string; timestamp: number },
+    ReadCommitResult,
     { content: string; timestamp: number; progress: number }
   >({
     async transform(chunk, controller) {
-      const { commit, timestamp } = chunk;
+      const timestamp = chunk.commit.author.timestamp;
+      const blob = await readBlob({
+        ...gitProps,
+        oid: chunk.oid,
+        filepath: "currentTrains.xml",
+      });
 
-      const { stdout: content } = await exec(
-        `git -C data show ${commit}:./currentTrains.xml`
-      );
+      const content = Buffer.from(blob.blob).toString("utf8");
 
       const progress = i++ / history.length;
 
