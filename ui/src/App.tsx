@@ -18,8 +18,6 @@ function App() {
 
   return (
     <>
-      <h3>Trains!</h3>
-
       <Map
         initialViewState={{
           longitude: -6.2603,
@@ -177,7 +175,9 @@ function TrainPicker({ setTrains }: { setTrains: Setter }) {
   const rangeResults = useQuery<{
     min: arrow.DateMillisecond;
     max: arrow.DateMillisecond;
-  }>(`select min("time") as min, max("time") as max from trains`);
+  }>(`select min(timestamp) as min, max(timestamp) as max from events`);
+
+  console.log(rangeResults);
 
   const range = rangeResults?.length
     ? [rangeResults[0].min, rangeResults[0].max]
@@ -186,26 +186,80 @@ function TrainPicker({ setTrains }: { setTrains: Setter }) {
   const [value, setValue] = useState<number>();
   console.log(value);
 
+  // const trains = null;
+
   const trains = useQuery<{
     code: arrow.Utf8;
     geo: arrow.Utf8;
   }>(`
-  SELECT
-    code,
-    ST_AsGeoJSON(point) as geo
-  FROM
-    trains
-  WHERE
-    "time" = (
-      SELECT
-        "time"
-      FROM
-        trains
-      ORDER BY
-        ABS(epoch_ms("time") - ${value || 1})
-      LIMIT
-        1
-    );
+    -- Load the spatial extension first!
+-- INSTALL spatial;
+-- LOAD spatial;
+
+WITH
+-- Step 1: Find the last event for RECENTLY ACTIVE trains.
+last_event AS (
+    SELECT
+        e.train,
+        e."timestamp" AS prev_ts,
+        s.point AS prev_point
+    FROM events AS e
+    JOIN stations AS s ON e.station_id = s.id
+    WHERE
+        -- The event must be before our target time...
+        e."timestamp" <= to_timestamp(1758537149295 / 1000)
+        -- AND it must be within the last 30 minutes from our target time.
+        AND e."timestamp" >= to_timestamp(1758537149295 / 1000) - INTERVAL '30' MINUTE -- ADDED FILTER
+    QUALIFY ROW_NUMBER() OVER(PARTITION BY e.train ORDER BY e."timestamp" DESC) = 1
+),
+
+-- Step 2: Find the first event AFTER the target time (this logic remains the same).
+next_event AS (
+    SELECT
+        e.train,
+        e."timestamp" AS next_ts,
+        s.point AS next_point
+    FROM events AS e
+    JOIN stations AS s ON e.station_id = s.id
+    WHERE e."timestamp" > to_timestamp(1758537149295 / 1000)
+    QUALIFY ROW_NUMBER() OVER(PARTITION BY e.train ORDER BY e."timestamp" ASC) = 1
+)
+
+-- Step 3: Join and calculate the interpolated position.
+SELECT
+    le.train,
+    ST_AsGeoJSON(
+    CASE
+        -- If no 'next_event', train is at its last known location.
+        WHEN ne.train IS NULL THEN le.prev_point
+
+        -- Avoid division by zero if timestamps are the same.
+        WHEN epoch_ms(ne.next_ts) <= epoch_ms(le.prev_ts) THEN le.prev_point
+
+        -- Otherwise, the train is in transit. Interpolate its position.
+        ELSE
+            ST_Point(
+                -- Interpolated X coordinate
+                ST_X(le.prev_point) +
+                (
+                    -- Interpolation factor
+                    (1758537149295 - epoch_ms(le.prev_ts)) /
+                    CAST(epoch_ms(ne.next_ts) - epoch_ms(le.prev_ts) AS DOUBLE)
+
+                ) * (ST_X(ne.next_point) - ST_X(le.prev_point)),
+
+                -- Interpolated Y coordinate
+                ST_Y(le.prev_point) +
+                (
+                    -- Interpolation factor (repeated)
+                    (1758537149295 - epoch_ms(le.prev_ts)) /
+                    CAST(epoch_ms(ne.next_ts) - epoch_ms(le.prev_ts) AS DOUBLE)
+
+                ) * (ST_Y(ne.next_point) - ST_Y(le.prev_point))
+            )
+    END) AS current_location
+FROM last_event AS le
+LEFT JOIN next_event AS ne ON le.train = ne.train;
 `);
 
   // console.log({ trains });
