@@ -46,4 +46,4 @@ export const trainParser = createParser("objTrainPositions", {
   TrainDate: "date",
   PublicMessage: "message",
   Direction: "direction",
-});
+} as const);
