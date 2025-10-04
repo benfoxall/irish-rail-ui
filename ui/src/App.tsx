@@ -1,7 +1,18 @@
-import { Suspense, use, useEffect, useState, type FC } from "react";
+import {
+  Suspense,
+  use,
+  useCallback,
+  useEffect,
+  useState,
+  type FC,
+} from "react";
 import * as arrow from "apache-arrow";
 import { feature, featureCollection } from "@turf/turf";
-import Map, { Layer, Source } from "react-map-gl/maplibre";
+import Map, {
+  Layer,
+  Source,
+  type MapLayerMouseEvent,
+} from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 const dbImport = import("./db").then((d) => d.default);
@@ -14,7 +25,23 @@ type Tr = GeoJSON.FeatureCollection<
 >;
 
 function App() {
-  const [trains, setTrains] = useState<Tr>();
+  const [hovered, setHovered] = useState<string[]>([]);
+
+  const hover = useCallback((event: MapLayerMouseEvent) => {
+    console.log(event.features?.map((f) => f.properties.name));
+
+    const under = event.features?.map((f) => f.properties.name as string) || [];
+
+    if (under.length == 0) return;
+
+    setHovered((prev) => {
+      if (prev.length != under.length) return under;
+      if (prev.every((value, i) => value === under[i])) {
+        return prev;
+      }
+      return under;
+    });
+  }, []);
 
   return (
     <>
@@ -26,27 +53,29 @@ function App() {
         }}
         style={{ position: "fixed", left: 0, top: 0, right: 0, bottom: 0 }}
         mapStyle="https://tiles.openfreemap.org/styles/positron"
+        onMouseMove={hover}
+        interactiveLayerIds={["stations"]}
       >
         <Suspense fallback={null}>
-          <Stations />
+          <Stations hover={hovered} />
         </Suspense>
 
-        <Trains trains={trains} />
+        {/* <Trains trains={trains} /> */}
       </Map>
-      <ControlPanel setTrains={setTrains} />
+      <ControlPanel hovered={hovered} />
     </>
   );
 }
 
-const Stations: FC = () => {
+const Stations: FC<{ hover: string[] }> = ({ hover }) => {
   const db = use(dbImport);
 
   const [geo, setGeo] = useState<
     GeoJSON.FeatureCollection<
       GeoJSON.Point,
       {
-        code: string;
-        desc: string;
+        name: string;
+        // desc: string;
       }
     >
   >();
@@ -56,16 +85,23 @@ const Stations: FC = () => {
       const conn = await db.connect();
 
       const result = await conn.query<{
+        station: arrow.Utf8;
         geo: arrow.Utf8;
-        desc: arrow.Utf8;
-        code: arrow.Utf8;
-      }>(`select ST_AsGeoJSON(point) as geo, "desc", code, from stations`);
+      }>(`
+        select distinct
+          station,
+          ST_AsGeoJSON(ST_Point(lon, lat)) as geo
+        from
+          events
+        where
+          lat != 0
+          AND lon != 0  
+        `);
 
       const features: GeoJSON.Feature<
         GeoJSON.Point,
         {
-          code: string;
-          desc: string;
+          name: string;
         }
       >[] = [];
 
@@ -74,8 +110,7 @@ const Stations: FC = () => {
           const geometry = JSON.parse(row.geo);
 
           const f = feature(geometry as GeoJSON.Point, {
-            code: row.code,
-            desc: row.desc,
+            name: row.station,
           });
 
           features.push(f);
@@ -92,16 +127,88 @@ const Stations: FC = () => {
     run();
   }, [db]);
 
+  const [connected, setConnected] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (hover.length === 0) {
+      setConnected([]);
+      return;
+    }
+
+    async function run() {
+      const conn = await db.connect();
+
+      const result = await conn.query<{
+        station: arrow.Utf8;
+      }>(`
+        with routes as (
+          select distinct route from events
+          where station = '${hover[0]}'
+        )
+
+        select distinct station from events
+        join routes on events.route = routes.route
+        `);
+
+      const features: string[] = [];
+
+      for (const batch of result.batches) {
+        for (const row of batch) {
+          features.push(row.station);
+        }
+      }
+
+      setConnected(features);
+
+      console.log(features);
+
+      await conn.close();
+    }
+
+    run();
+  }, [db, hover]);
+
   if (geo) {
     return (
       <Source type="geojson" data={geo}>
         <Layer
+          id="stations"
           type="circle"
           paint={{
-            "circle-radius": 3,
-            "circle-opacity": 0.5,
+            "circle-radius": 12,
+            "circle-opacity": 0.1,
             "circle-color": "#f0f",
           }}
+        ></Layer>
+        <Layer
+          id="stations"
+          type="circle"
+          paint={{
+            "circle-radius": 2,
+            "circle-opacity": 0.8,
+            "circle-color": "#f0f",
+          }}
+        ></Layer>
+        <Layer
+          id="station-hover"
+          type="circle"
+          paint={{
+            "circle-radius": 12,
+            "circle-opacity": 0.5,
+            "circle-color": "#98f",
+          }}
+          filter={["in", ["get", "name"], ["literal", hover]]}
+        ></Layer>
+
+        <Layer
+          id="station-connected"
+          type="circle"
+          paint={{
+            "circle-radius": 4,
+            "circle-opacity": 1,
+            "circle-color": "#ff0",
+          }}
+          filter={["in", ["get", "name"], ["literal", connected]]}
         ></Layer>
       </Source>
     );
@@ -141,37 +248,22 @@ type Setter = React.Dispatch<
   >
 >;
 
-function ControlPanel({ setTrains }: { setTrains: Setter }) {
+function ControlPanel({ hovered }: { hovered: string[] }) {
   return (
     <div className="control-panel">
       <h3>Irish Rail</h3>
-      <p>Stations and historical train locations.</p>
+      <p>{hovered.join(" ")}</p>
       <p>
-        Data:{" "}
+        source{" "}
         <a href="https://api.irishrail.ie/realtime/">Irish Rail Realtime API</a>
       </p>
-
-      <Suspense fallback={<p>Loading database</p>}>
-        <TrainPicker setTrains={setTrains} />
-
-        {/* <Stations /> */}
-      </Suspense>
-
-      <div key={"year"} className="input">
-        {/* <input
-          type="range"
-          value={year}
-          min={1995}
-          max={2015}
-          step={1}
-          onChange={(evt) => props.onChange(evt.target.value)}
-        /> */}
-      </div>
     </div>
   );
 }
 
 function TrainPicker({ setTrains }: { setTrains: Setter }) {
+  return null;
+
   const rangeResults = useQuery<{
     min: arrow.DateMillisecond;
     max: arrow.DateMillisecond;
